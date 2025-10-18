@@ -1,0 +1,435 @@
+// =========================================================================
+// PROJET: SMARTROAD BENIN - GESTION DYNAMIQUE DE CARREFOUR ET D'URGENCE
+// DESCRIPTION: Système de feux de circulation dynamique adapté au trafic
+//              via des capteurs ultrasons (CD4051) et un module GSM (SIM800L)
+//              pour la gestion des urgences.
+// =========================================================================
+
+#include <SoftwareSerial.h>
+
+// --- CONFIGURATION DU SYSTÈME ET BROCHES MATÉRIELLES ---
+
+// 74HC595 (Contrôle des Feux et Afficheurs)
+const int PIN_DATA_DS = 2;   // Broche Data (DS)
+const int PIN_LATCH_STCP = 3;  // Broche Latch (ST_CP)
+const int PIN_CLOCK_SHCP = 4;  // Broche Clock (SH_CP)
+const int NOMBRE_REGISTRES = 8; // 8 x 74HC595 en série (4 Feux + 4 Afficheurs)
+
+// Multiplexage 8 Digits (Anodes)
+// PIN 0 est réutilisée pour le dernier digit.
+const int PIN_DIGITS_ANODE[8] = {5, 6, 7, 8, 9, 10, 11, 0};
+const int NOMBRE_DIGITS = 8;
+
+// Communication GSM (SIM800L)
+const int PIN_SIM_RX = A1; // RX du SIM800L -> TX Arduino
+const int PIN_SIM_TX = A0; // TX du SIM800L -> RX Arduino
+SoftwareSerial simSerial(PIN_SIM_RX, PIN_SIM_TX);
+
+// Capteurs Ultrasons (8 Capteurs via CD4051)
+const int PIN_ULTRASON_TRIG = 12; // Déclenchement (Trig)
+const int PIN_ULTRASON_ECHO = A2; // Réception (Echo)
+const int PIN_4051_S0 = A3;      // Sélection bit 0 (S0)
+const int PIN_4051_S1 = A4;      // Sélection bit 1 (S1)
+const int PIN_4051_S2 = A5;      // Sélection bit 2 (S2)
+
+// Bouton d'Urgence
+const int PIN_BOUTON_URGENCE = 13;
+
+// --- DÉFINITIONS LOGIQUES (FEUX ET TEMPS) ---
+
+// Masques binaires pour les segments du feu (Anode Commune: Bit 1 allumé)
+#define ROUGE_LED   B00000001
+#define ORANGE_LED  B00000010
+#define VERT_LED    B00000100
+
+// Durées des phases de Vert en secondes
+const int TEMPS_VERT_DENSE = 25;
+const int TEMPS_VERT_LEGER = 10;
+const int TEMPS_VERT_MINIMAL = 3;
+const int TEMPS_ORANGE_FIXE = 3;
+
+// Seuil de détection du trafic (véhicule)
+const int SEUIL_DISTANCE_CM = 10;
+
+// Durée de pression nécessaire pour l'urgence (5 secondes)
+const long DUREE_PRESSION_URGENCE = 5000;
+
+// Numéro de secours pour le GSM
+const char* NUMERO_SECOURS = "+22966197215";
+
+// Table des chiffres pour Afficheurs 7-Segments (Anode Commune: Segment Allumé = 0)
+const byte TABLE_SEGMENTS[] = {
+  B11000000, // 0
+  B11111001, // 1
+  B10100100, // 2
+  B10110000, // 3
+  B10011001, // 4
+  B10010010, // 5
+  B10000010, // 6
+  B11111000, // 7
+  B10000000, // 8
+  B10010000  // 9
+};
+
+// --- VARIABLES D'ÉTAT GLOBALES ---
+
+// Registres des 74HC595 (4 pour Feux, 4 pour Afficheurs)
+byte registres[NOMBRE_REGISTRES];
+
+int voieActive = 0; // Indice de la voie actuellement au Vert (0 à 3)
+int chiffresAAfficher[NOMBRE_DIGITS]; // Temps à afficher sur les 8 digits
+
+// Données lues et calculées
+int distancesCapteurs[8]; // Distances lues des 8 capteurs (cm)
+// Temps de Vert dynamique pour chaque voie
+int tempsVertDynamique[4] = {TEMPS_VERT_LEGER, TEMPS_VERT_LEGER, TEMPS_VERT_LEGER, TEMPS_VERT_LEGER};
+int tempsCycleTotal = 0; // Temps total (Vert + Orange) de la voie active
+
+// État d'urgence
+long tempsDebutAppui = 0;
+bool urgenceDeclenchee = false;
+
+
+// =========================================================================
+// 1. FONCTIONS DES REGISTRES À DÉCALAGE (74HC595)
+// =========================================================================
+
+// Envoie les données des 8 registres aux 8 puces 74HC595.
+void ecrireRegistres() {
+  digitalWrite(PIN_LATCH_STCP, LOW);
+
+  // Envoi des données du dernier au premier registre
+  for (int i = NOMBRE_REGISTRES - 1; i >= 0; i--) {
+    shiftOut(PIN_DATA_DS, PIN_CLOCK_SHCP, MSBFIRST, registres[i]);
+  }
+
+  digitalWrite(PIN_LATCH_STCP, HIGH);
+}
+
+// Initialise les feux sur ROUGE et éteint les afficheurs.
+void initialiserFeuxEtAfficheurs() {
+  for (int i = 0; i < 4; i++) {
+    registres[i] = ROUGE_LED;
+  }
+  for (int i = 4; i < 8; i++) {
+    registres[i] = B11111111; // Éteint tous les segments
+  }
+  ecrireRegistres();
+  delay(2000);
+}
+
+
+// =========================================================================
+// 2. FONCTIONS CAPTEURS ULTRASONS (CD4051)
+// =========================================================================
+
+// Sélectionne l'entrée (capteur) du multiplexeur CD4051.
+void selectionnerCapteur(int index) {
+  digitalWrite(PIN_4051_S0, bitRead(index, 0));
+  digitalWrite(PIN_4051_S1, bitRead(index, 1));
+  digitalWrite(PIN_4051_S2, bitRead(index, 2));
+}
+
+// Lit la distance pour un capteur donné via le multiplexeur.
+long lireDistance(int indexCapteur) {
+  selectionnerCapteur(indexCapteur);
+
+  // Séquence de déclenchement (Trig)
+  digitalWrite(PIN_ULTRASON_TRIG, LOW);
+  delayMicroseconds(2);
+  digitalWrite(PIN_ULTRASON_TRIG, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(PIN_ULTRASON_TRIG, LOW);
+
+  // Mesure de la durée de l'écho
+  long duree = pulseIn(PIN_ULTRASON_ECHO, HIGH, 30000);
+
+  if (duree == 0) return 300; // Si timeout, distance maximale
+  return duree / 58; // Conversion en cm
+}
+
+// Lit les deux capteurs de la voie et ajuste dynamiquement le temps de Vert.
+void lireCapteursEtAdapterTemps(int voie) {
+  int indexA = voie * 2;
+  int indexB = voie * 2 + 1;
+
+  distancesCapteurs[indexA] = lireDistance(indexA);
+  distancesCapteurs[indexB] = lireDistance(indexB);
+
+  bool capteurA_detecte = (distancesCapteurs[indexA] < SEUIL_DISTANCE_CM);
+  bool capteurB_detecte = (distancesCapteurs[indexB] < SEUIL_DISTANCE_CM);
+
+  int nouveauTempsVert;
+
+  if (capteurA_detecte && capteurB_detecte) {
+    nouveauTempsVert = TEMPS_VERT_DENSE; // Trafic dense
+  } else if (capteurA_detecte || capteurB_detecte) {
+    nouveauTempsVert = TEMPS_VERT_LEGER; // Trafic léger
+  } else {
+    nouveauTempsVert = TEMPS_VERT_MINIMAL; // Trafic nul
+  }
+  tempsVertDynamique[voie] = nouveauTempsVert;
+}
+
+
+// =========================================================================
+// 3. FONCTIONS GSM ET URGENCES 🚨
+// =========================================================================
+
+// Lit la réponse du module GSM avec un timeout de 2 secondes.
+String simLireReponse() {
+  String reponse = "";
+  long tempsDebut = millis();
+  while (simSerial.available() || (millis() - tempsDebut < 2000)) {
+    if (simSerial.available()) {
+      reponse += (char)simSerial.read();
+    }
+  }
+  reponse.trim();
+  return reponse;
+}
+
+// Envoie une commande AT et vérifie si la réponse attendue est présente.
+bool simEnvoyerEtVerifier(const char* commande, const char* attente) {
+  simSerial.println(commande);
+  String reponse = simLireReponse();
+  Serial.print("<- RSP: ");
+  Serial.println(reponse);
+  return reponse.indexOf(attente) != -1;
+}
+
+// Vérifie si le module SIM800L est connecté au réseau.
+void simVerifierConnexion() {
+  Serial.println("--- VÉRIFICATION SIM800L ---");
+  if (simEnvoyerEtVerifier("AT", "OK")) {
+    Serial.println("-> Communication AT OK.");
+  }
+  // Vérifie l'enregistrement au réseau (+CREG: 0,1 ou +CREG: 0,5)
+  if (simEnvoyerEtVerifier("AT+CREG?", "+CREG: 0,1") || simEnvoyerEtVerifier("AT+CREG?", "+CREG: 0,5")) {
+    Serial.println("-> Réseau GSM OK.");
+  } else {
+    Serial.println("-> ERREUR: NON ENREGISTRÉ AU RÉSEAU.");
+  }
+  Serial.println("---------------------------");
+}
+
+// Envoie un SMS de secours et lance un appel.
+void envoyerSMS_et_Appeler() {
+  Serial.println("-> Tentative d'envoi SMS et appel...");
+
+  // 1. Envoi du SMS
+  if (simEnvoyerEtVerifier("AT+CMGF=1", "OK")) { // Mode texte
+    simSerial.print("AT+CMGS=\"");
+    simSerial.print(NUMERO_SECOURS);
+    simSerial.println("\"");
+    delay(500);
+    simSerial.print("URGENCE SMARTROAD BENIN: Accident detecte au carrefour.");
+    delay(500);
+    simSerial.write(0x1A); // Envoi du CTRL+Z
+    simLireReponse();
+  }
+
+  delay(3000);
+
+  // 2. Lancement de l'appel
+  simSerial.print("ATD");
+  simSerial.print(NUMERO_SECOURS);
+  simSerial.println(";");
+  simLireReponse();
+  Serial.println("-> GSM: Appel/SMS lancé. Maintenu pendant la durée de la crise.");
+  delay(1000);
+}
+
+// Vérifie si le bouton d'urgence est pressé pendant 5 secondes.
+void verifierUrgence() {
+  if (digitalRead(PIN_BOUTON_URGENCE) == LOW) {
+    if (tempsDebutAppui == 0) {
+      tempsDebutAppui = millis(); // Début de l'appui
+    } else if (millis() - tempsDebutAppui >= DUREE_PRESSION_URGENCE && !urgenceDeclenchee) {
+
+      Serial.println("\n!!! ALERTE URGENCE 5S CONFIRMÉE - ACTIVATION SYSTÈME !!!");
+
+      envoyerSMS_et_Appeler();
+      urgenceDeclenchee = true;
+
+      // Force tous les feux au ROUGE immédiatement
+      for (int i = 0; i < 4; i++) {
+        registres[i] = ROUGE_LED;
+      }
+      ecrireRegistres();
+
+      // Reste en mode urgence tant que le bouton est maintenu
+      while (digitalRead(PIN_BOUTON_URGENCE) == LOW) {
+        afficherMultiplexe(); // Continue l'affichage des digits
+        delay(10);
+      }
+    }
+  } else {
+    // Bouton relâché
+    if (urgenceDeclenchee) {
+      Serial.println("--- Sortie du mode urgence. Reprise du cycle. ---");
+    }
+    tempsDebutAppui = 0;
+    urgenceDeclenchee = false;
+  }
+}
+
+
+// =========================================================================
+// 4. FONCTIONS DE GESTION DU TEMPS ET DES FEUX
+// =========================================================================
+
+// Détermine la couleur du feu en fonction du temps restant dans le cycle.
+byte determinerCouleur(int tempsRestant) {
+  if (tempsRestant > TEMPS_ORANGE_FIXE) {
+    return VERT_LED;
+  } else if (tempsRestant > 0) {
+    return ORANGE_LED;
+  } else {
+    return ROUGE_LED;
+  }
+}
+
+// Met à jour l'état des feux pour le cycle en cours.
+void mettreAJourFeux(byte couleurVoieActive) {
+  registres[voieActive] = couleurVoieActive;
+  // Les autres voies sont toujours au ROUGE
+  for (int i = 0; i < 4; i++) {
+    if (i != voieActive) {
+      registres[i] = ROUGE_LED;
+    }
+  }
+}
+
+// Calcule le temps d'attente pour une voie donnée.
+int calculerTempsAttente(int voie, int tempsRestantVoieActive) {
+  int tempsAttente = tempsRestantVoieActive; // Temps restant dans le cycle en cours
+
+  // Calcule le nombre de cycles complets à passer avant que cette voie ne devienne active
+  int voiesAPasser = (voie > voieActive) ? (voie - voieActive - 1) : ((4 - voieActive) + voie - 1);
+
+  // Ajout du temps total des cycles intermédiaires
+  for (int i = 0; i < voiesAPasser; i++) {
+    int indexVoie = (voieActive + 1 + i) % 4;
+    tempsAttente += (tempsVertDynamique[indexVoie] + TEMPS_ORANGE_FIXE);
+  }
+
+  return min(tempsAttente, 99); // Limite l'affichage à 99 secondes
+}
+
+// Calcule tous les chiffres à afficher (temps restant de la voie active ou attente pour les autres).
+void calculerTousLesChiffres(int tempsRestantVoieActive) {
+  for (int voie = 0; voie < 4; voie++) {
+    int tempsAfficheur;
+    if (voie == voieActive) {
+      tempsAfficheur = tempsRestantVoieActive;
+    } else {
+      tempsAfficheur = calculerTempsAttente(voie, tempsRestantVoieActive);
+    }
+
+    // Calcul de l'index des dizaines et unités dans le tableau de 8 digits
+    int indexDizaines = voie * 2;
+    int indexUnites = (voie * 2) + 1;
+
+    chiffresAAfficher[indexDizaines] = tempsAfficheur / 10;
+    chiffresAAfficher[indexUnites] = tempsAfficheur % 10;
+  }
+}
+
+// Affiche une seconde d'information sur les 8 digits via multiplexage.
+void afficherMultiplexe() {
+  // Boucle de 10ms (100 fois par seconde) pour la persistance rétinienne
+  for (int i = 0; i < 100; i++) {
+    for (int digitIndex = 0; digitIndex < NOMBRE_DIGITS; digitIndex++) {
+
+      // 1. Éteindre toutes les anodes pour éviter les ghostings
+      for (int pin : PIN_DIGITS_ANODE) {
+        digitalWrite(pin, LOW);
+      }
+
+      // 2. Déterminer quel registre de segment mettre à jour (4 à 7)
+      int registreSegment = 4 + (digitIndex / 2);
+
+      // 3. Mettre à jour les segments (chiffre)
+      registres[registreSegment] = TABLE_SEGMENTS[chiffresAAfficher[digitIndex]];
+
+      // 4. Écrire les 8 registres (feux + segments)
+      ecrireRegistres();
+
+      // 5. Allumer l'anode du digit courant
+      digitalWrite(PIN_DIGITS_ANODE[digitIndex], HIGH);
+
+      // 6. Court délai pour l'affichage
+      delayMicroseconds(500);
+    }
+    verifierUrgence(); // Vérification de l'urgence intégrée au multiplexage
+  }
+}
+
+// =========================================================================
+// 5. SETUP ET BOUCLE PRINCIPALE
+// =========================================================================
+
+void setup() {
+  // Configuration des broches du 74HC595
+  pinMode(PIN_LATCH_STCP, OUTPUT);
+  pinMode(PIN_CLOCK_SHCP, OUTPUT);
+  pinMode(PIN_DATA_DS, OUTPUT);
+
+  // Configuration des broches d'anode des digits
+  for (int pin : PIN_DIGITS_ANODE) {
+    pinMode(pin, OUTPUT);
+    digitalWrite(pin, LOW);
+  }
+
+  // Configuration des broches du CD4051 et Ultrasons
+  pinMode(PIN_4051_S0, OUTPUT);
+  pinMode(PIN_4051_S1, OUTPUT);
+  pinMode(PIN_4051_S2, OUTPUT);
+  pinMode(PIN_ULTRASON_TRIG, OUTPUT);
+  pinMode(PIN_ULTRASON_ECHO, INPUT);
+
+  // Configuration du bouton d'urgence (avec pull-up interne)
+  pinMode(PIN_BOUTON_URGENCE, INPUT_PULLUP);
+
+  // Initialisation des communications
+  Serial.begin(9600);   // Moniteur série
+  simSerial.begin(9600); // Communication GSM
+
+  Serial.println("=== SMARTROAD BENIN - DEMARRAGE DU SYSTEME ===");
+  simVerifierConnexion(); // Tente de se connecter au réseau GSM
+  initialiserFeuxEtAfficheurs();
+}
+
+void loop() {
+  verifierUrgence(); // Vérification au début de la boucle
+
+  // Boucle principale sur les 4 voies du carrefour
+  for (voieActive = 0; voieActive < 4; voieActive++) {
+
+    // 1. Lecture du trafic et adaptation du temps de Vert
+    lireCapteursEtAdapterTemps(voieActive);
+    tempsCycleTotal = tempsVertDynamique[voieActive] + TEMPS_ORANGE_FIXE;
+
+    Serial.print("\n--- VOIE ");
+    Serial.print(voieActive + 1);
+    Serial.print(" ACTIVE (T_Vert=");
+    Serial.print(tempsVertDynamique[voieActive]);
+    Serial.println("s) ---");
+
+    // 2. Gestion du compte à rebours de la phase (Vert + Orange)
+    for (int tempsRestant = tempsCycleTotal; tempsRestant >= 0; tempsRestant--) {
+      if (urgenceDeclenchee) break; // Sortir immédiatement si l'urgence est activée
+
+      // Détermine l'état des feux (Vert, Orange, Rouge)
+      byte couleur = determinerCouleur(tempsRestant);
+      mettreAJourFeux(couleur);
+
+      // Calcule les chiffres pour tous les afficheurs (temps restant ou temps d'attente)
+      calculerTousLesChiffres(tempsRestant);
+
+      // Boucle d'affichage et de décompte (1 seconde réelle)
+      afficherMultiplexe();
+    }
+  }
+}
