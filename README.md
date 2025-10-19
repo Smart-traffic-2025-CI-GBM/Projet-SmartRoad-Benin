@@ -36,7 +36,7 @@ Cette section liste les composants matériels et outils essentiels à la concept
 
 Le schéma ci-dessous détaille le câblage complet du système, incluant les circuits d'extension d'E/S (74HC595 et CD4051), essentiels à la gestion des nombreuses entrées et sorties.
 
-![Schéma de câblage complet du système](./image/Shema_de_cablage.png)
+![Schéma de câblage complet du système](./image/Shéma_de_cablage.jpg)
 
 ***
 
@@ -47,7 +47,7 @@ Ces visuels illustrent les étapes importantes de notre processus de conception 
 ### Tests des Périphériques et Intégration
 
 * **Test du Câblage Général :**
-    ![Vue générale des connexions sur la platine d'essai](./image/test_câblage.jpg)
+    ![Vue générale des connexions sur la platine d'essai](./image/test_cablage.jpg)
 
   
 * **Test des LEDs (Feux) :**
