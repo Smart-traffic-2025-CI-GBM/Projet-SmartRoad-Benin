@@ -60,7 +60,7 @@ Ces visuels illustrent les étapes importantes de notre processus de conception 
 * **Programmation des Capteurs :**
     ![Image montrant la programmation ou les résultats des tests de capteurs](Programmation_des_capteurs.jpg)
 * **Test Module SIM800L :**
-    ![Test de la communication avec le module SIM800L](test_module_SIM.jpg)
+    ![Test de la communication avec le module SIM800L](./image/test_module_SIM.jpg)
 
 ***
 
