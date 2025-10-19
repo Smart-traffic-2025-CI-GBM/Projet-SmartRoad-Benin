@@ -13,7 +13,7 @@ Notre projet a pour objectif de concevoir et réaliser un **système de gestion 
 
 ***
 
-## 🛠️ Matériel Utilisé (BOM - Bill of Materials)
+## 🛠️ Matériel Utilisé 
 
 Cette section liste les composants matériels et outils essentiels à la conception du projet.
 
@@ -39,7 +39,7 @@ Cette section liste les composants matériels et outils essentiels à la concept
 
 Le schéma ci-dessous détaille le câblage complet du système, incluant les circuits d'extension d'E/S (74HC595 et CD4051), essentiels à la gestion des nombreuses entrées et sorties.
 
-![Schéma de câblage complet du système](Shéma de cablage .png)
+![Schéma de câblage complet du système](Shéma_de_cablage.png)
 
 ***
 
@@ -50,7 +50,7 @@ Ces visuels illustrent les étapes importantes de notre processus de conception 
 ### Tests des Périphériques et Intégration
 
 * **Test du Câblage Général :**
-    ![Vue générale des connexions sur la platine d'essai](test_câblage.jpg)
+    ![Vue générale des connexions sur la platine d'essai](image/test_câblage.jpg)
 * **Test des LEDs (Feux) :**
     ![Test du fonctionnement des LED pour les feux](test_des_leds.jpg)
 * **Test des Afficheurs 7 Segments :**
