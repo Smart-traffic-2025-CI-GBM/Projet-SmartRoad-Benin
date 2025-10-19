@@ -30,7 +30,7 @@ Cette section liste les composants matériels et outils essentiels à la concept
 
 ### Aperçu des Composants
 
-![Photo des principaux composants électroniques utilisés](Quelques_composants.png)
+![Photo des principaux composants électroniques utilisés](./image/Quelques_composants.png)
 > *Vue d'ensemble des composants clés avant l'assemblage.*
 
 ***
@@ -39,7 +39,7 @@ Cette section liste les composants matériels et outils essentiels à la concept
 
 Le schéma ci-dessous détaille le câblage complet du système, incluant les circuits d'extension d'E/S (74HC595 et CD4051), essentiels à la gestion des nombreuses entrées et sorties.
 
-![Schéma de câblage complet du système](Shéma_de_cablage.png)
+![Schéma de câblage complet du système](./image/Shéma_de_cablage.png)
 
 ***
 
@@ -50,15 +50,15 @@ Ces visuels illustrent les étapes importantes de notre processus de conception 
 ### Tests des Périphériques et Intégration
 
 * **Test du Câblage Général :**
-    ![Vue générale des connexions sur la platine d'essai](image/test_câblage.jpg)
+    ![Vue générale des connexions sur la platine d'essai](./image/test_câblage.jpg)
 * **Test des LEDs (Feux) :**
-    ![Test du fonctionnement des LED pour les feux](test_des_leds.jpg)
+    ![Test du fonctionnement des LED pour les feux](./image/test_des_leds.jpg)
 * **Test des Afficheurs 7 Segments :**
-    ![Test d'affichage multiplexé des 7 segments](test_afficheurs.jpg)
+    ![Test d'affichage multiplexé des 7 segments](./image/test_afficheurs.jpg)
 * **Test Ultrasons (Capteurs) :**
-    ![Test de la détection de distance par les capteurs ultrasons](test_ultrason.jpg)
+    ![Test de la détection de distance par les capteurs ultrasons](./image/test_ultrason.jpg)
 * **Programmation des Capteurs :**
-    ![Image montrant la programmation ou les résultats des tests de capteurs](Programmation_des_capteurs.jpg)
+    ![Image montrant la programmation ou les résultats des tests de capteurs](./image/Programmation_des_capteurs.jpg)
 * **Test Module SIM800L :**
     ![Test de la communication avec le module SIM800L](./image/test_module_SIM.jpg)
 
