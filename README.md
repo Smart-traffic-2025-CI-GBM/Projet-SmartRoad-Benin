@@ -39,7 +39,7 @@ Cette section liste les composants matériels et outils essentiels à la concept
 
 Le schéma ci-dessous détaille le câblage complet du système, incluant les circuits d'extension d'E/S (74HC595 et CD4051), essentiels à la gestion des nombreuses entrées et sorties.
 
-![Schéma de câblage complet du système](Shéma de cablage .png)
+![Schéma de câblage complet du système](image/Programmation_des_capteurs.jpg)
 
 ***
 
@@ -122,9 +122,9 @@ La conception d'un système intelligent multi-voies a présenté plusieurs défi
 [Image ou lien vers la démonstration du système complet en fonctionnement.]
 
 ![Photo de la maquette SMARTROAD BENIN en fonctionnement final](demo_finale_systeme.jpg)
-**[Lien vers la Vidéo de Démonstration du SmartRoad Benin (YouTube/Vimeo)]**
+**[Lien vers la Vidéo de Démonstration du SmartRoad Benin ]**
 
-> **[...À COMPLÉTER AVEC LE LIEN VIDÉO...]**
+> 
 
 ***
 
