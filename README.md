@@ -112,7 +112,6 @@ La conception d'un système intelligent multi-voies a présenté plusieurs défi
 
 ## 👥 Répartition des Rôles et Contributions
 
-[...À COMPLÉTER PAR L'ÉQUIPE...]
 
 | Membre de l'Équipe | Rôles Principaux | Contributions Spécifiques |
 | :--- | :--- | :--- |
@@ -126,12 +125,11 @@ La conception d'un système intelligent multi-voies a présenté plusieurs défi
 
 ## 🏆 Démonstration Finale
 
-[Image ou lien vers la démonstration du système complet en fonctionnement.]
+Image de du système complet en fonctionnement.
 
 ![Photo de la maquette SMARTROAD BENIN en fonctionnement final](demo_finale_systeme.jpg)
-**[Lien vers la Vidéo de Démonstration du SmartRoad Benin (YouTube/Vimeo)]**
 
-> **[...À COMPLÉTER AVEC LE LIEN VIDÉO...]**
+
 
 ***
 
